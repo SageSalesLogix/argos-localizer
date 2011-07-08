@@ -9,18 +9,22 @@ gem install nokogiri
 
 Usage:
 1. Start a command prompt with Ruby
+
 2. Run the argos-localizer.rb file passing two parameters
 	a. First Parameter: Path to 'src' folder of product
+
 ```
 		"C:\code\mobile\products\argos-sample\src"
 ```
 
 	b. Second Parameter: Path of desired XML file
+	
 ```
 		"C:\code\mobile\products\argos-sample\de-DE.xml"
 ```
 
 Example:
+
 ```
 "C:\code\mobile\argos-localizer\argos-localizer.rb" "C:\code\mobile\products\argos-sample\src" "C:\code\mobile\products\argos-sample\de-DE.xml"
 ```
@@ -33,12 +37,15 @@ Example:
 
 
 Adding A Localization:
+
 1. Identify each string by it's class (namespace) and property
+
 2. Replace the text of the `value` node with your localized version of that property
 
-   Example:
+Example:
+   
 ```
-<data class=”Mobile.SalesLogix.Account.Detail” property=”accountText”>
+<data class="Mobile.SalesLogix.Account.Detail" property="accountText">
    <description>Context for the value string below</description>
    <value>konte</value> 
 </data>
@@ -50,33 +57,26 @@ Adding A Localization:
 
 5. Open the Ruby CLI and run the argos-localjs.rb file passing two parameters
 	a. First Parameter: Path to your new XML file
+	
 ```
 		"C:\code\mobile\products\argos-sample\de-DE.xml"
 ```
 
 	b. Second Parameter: Path of desired localization.js file
+	
 ```
 		"C:\code\mobile\products\argos-sample\de-DE.js"
 ```
 
 Example:
+
 ```
 "C:\code\mobile\argos-localizer\argos-localjs.rb" "C:\code\mobile\products\argos-sample\de-DE.xml" "C:\code\mobile\products\argos-sample\de-DE.js"
 ```
 
 6. Please wait ~5 - 20 seconds for the localization js to be built.
 
-s7. A 'Finished Generating' message will appear.
+7. A 'Finished Generating' message will appear.
 
-## TODO: Describe where to place file
+TODO: Describe where to place file
 8. Place your new .js file into x... do we need to update (from en-US.js to our name?) in index.html ?
-
-
- 
-	
-=======
-This requires the `rkelly` gem to be installed.
-
-```
-gem install rkelly
-```
