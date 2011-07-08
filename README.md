@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 This requires the `rkelly`, `builder` and `nokogiri` gems to be installed.
 These provide: A JS to Ruby parser, XML generator and XML parser.
 
@@ -81,4 +80,3 @@ This requires the `rkelly` gem to be installed.
 ```
 gem install rkelly
 ```
->>>>>>> 2ebe9371935f3bcb69f0b20d44ca9e55795ede81
