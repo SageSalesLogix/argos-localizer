@@ -1,14 +1,10 @@
 require_relative 'lib/docjs'
-<<<<<<< HEAD
 require 'builder'
 BUILDER = Builder::XmlMarkup.new(:indent => 2)
-=======
->>>>>>> 2ebe9371935f3bcb69f0b20d44ca9e55795ede81
 
 def create_localization_worksheet(source, destination)
   inspector = DocJS::Inspectors::ExtJsInspector.new
   project = inspector.inspect_path(source)
-<<<<<<< HEAD
   sdkPath = source.split('\\')[0..-4].push("argos-sdk").push("src").join("\\");
   inspector = DocJS::Inspectors::ExtJsInspector.new
   sdk = inspector.inspect_path(sdkPath)
@@ -95,14 +91,6 @@ def processSubObject(name,sub,obj)
 		end
 		addNode(name,sub+"["+property+"]",val)
 	end
-=======
-  project.classes do |cls, file|
-    print "#{cls.name} in #{file.path}\n"
-    cls.properties.each do |property|
-      print "\t#{property.name}: #{property.type}\n"
-    end
-  end
->>>>>>> 2ebe9371935f3bcb69f0b20d44ca9e55795ede81
 end
 
 def process_localization_worksheet(source)
