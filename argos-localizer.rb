@@ -49,7 +49,7 @@ def addNode(clss,prp,val)
 	#</data>
 	BUILDER.data("class"=>clss, "property"=>prp) { |b|
 		# placeholder for internal use by localizers
-		b.description("Context for the value string below")
+		b.description("")
 		b.value(val)
 	}
 end
