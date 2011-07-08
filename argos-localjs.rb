@@ -37,7 +37,7 @@ def create_localization_js(source, destination)
 				# else we gather them all up...
 				hashBlackList.push(nodeName)
 				thisHashes = nodes.xpath("//data[@class='"+clss+"'][starts-with(@property,'"+nodeName+"')]")
-				puts clss+"="+thisHashes.length.to_s()
+#				puts clss+"="+thisHashes.length.to_s()
 				localize += "\t\t"+nodeName+" : {\n"
 				thisHashes.each do |hashNode|
 					localize += "\t\t\t"+(hashNode["property"].split("[")[1].chop!())+" : '"+ fixQuotes(hashNode.at_css("value").inner_text()) +"',\n"
