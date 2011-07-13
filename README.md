@@ -19,16 +19,19 @@ a. First Parameter: Path to 'src' folder of product
 
 ```
 	"C:\code\mobile\products\argos-sample\src"
+```
 
 b. Second Parameter: Path of desired XML file
 
 ```
 		"C:\code\mobile\products\argos-sample\de-DE.xml"
+```
 
 Full Example:
 
 ```
 "C:\code\mobile\argos-localizer\argos-localizer.rb" "C:\code\mobile\products\argos-sample\src" "C:\code\mobile\products\argos-sample\de-DE.xml"
+```
 
 
 A 'Finished Generating' message will appear.
@@ -43,7 +46,7 @@ Replace the text of the `value` node with your localized version of that propert
 
 Example:
 ```
-	<data class=”Mobile.SalesLogix.Account.Detail” property=”accountText”>
+	<data class="Mobile.SalesLogix.Account.Detail" property="accountText">
 	   <description>Context for the value string below</description>
 	   <value>konte</value> 
 	</data>
@@ -59,16 +62,19 @@ a. First Parameter: Path to your new XML file
 
 ```
 		"C:\code\mobile\products\argos-sample\de-DE.xml"
+```
 
 b. Second Parameter: Path of desired localization.js file
 
 ```
 		"C:\code\mobile\products\argos-sample\de-DE.js"
+```
 
 Full Example:
 
 ```
 "C:\code\mobile\argos-localizer\argos-localjs.rb" "C:\code\mobile\products\argos-sample\de-DE.xml" "C:\code\mobile\products\argos-sample\de-DE.js"
+```
 
 
 A 'Finished Generating' message will appear.
