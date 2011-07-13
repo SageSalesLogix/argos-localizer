@@ -1,87 +1,42 @@
-This requires the `rkelly`, `builder` and `nokogiri` gems to be installed.
-These provide: A JS to Ruby parser, XML generator and XML parser.
+# Culture Tests
+Samples of SalesLogix in various languages using the argos-sample module
 
-```
-gem install rkelly
-gem install builder
-gem install nokogiri
-```
+### Change Log
+* index-dev.html - script to add specific datejs culture file
+* argos-sdk/src/Calendar.js - month and weekdays to use datejs culture info
+* argos-saleslogix/src/calendar/MonthView.js - attempted to add cell width normalization (still working on it)
+* argos-saleslogix/src/Format.js - exposed various currency culture information
+* argos-sample/localization/x-Y.js - added localizeObj which manually overwrites values instead of Ext.override the prototype
 
-Usage:
-Start a command prompt with Ruby
+### Running The Samples
+Look in products/argos-saleslogix and you will find these files:
+* index-dev-DE.html
+* index-dev-FR.html
+* index-dev-IT.html
+* index-dev-RU.html
 
-Run the argos-localizer.rb file passing two parameters
+Open them up to see saleslogix in that language - Calendar MonthView and places that use Format.currency should also respect the designated culture.
 
-	a. First Parameter: Path to 'src' folder of product
+### Development Process
 
-```
-		"C:\code\mobile\products\argos-sample\src"
-```
+1. Run argos-localizer.rb on a product folder to generate an english XML file
+2. Edit the english XML file with new language &lt;value%gt;s
+3. Run argos-localjs.rb on the edited XML
+4. Place the generated local.js file and place into argos-sample (your product) / localization
+5. Edit the index.html file near the bottom and rename the following line to your file
 
-	b. Second Parameter: Path of desired XML file
-	
-```
-		"C:\code\mobile\products\argos-sample\de-DE.xml"
-```
+	<!-- Argos Sample Localization -->
+	<script type="text/javascript" src="../argos-sample-RU/localization/en-US.js"></script>
 
-Example:
+6. At the top we need to adjust the datejs culture inclusion. Change the var culture line to the appropiate designation
 
-```
-"C:\code\mobile\argos-localizer\argos-localizer.rb" "C:\code\mobile\products\argos-sample\src" "C:\code\mobile\products\argos-sample\de-DE.xml"
-```
+	<!-- DateJS -->
+	<!-- script type="text/javascript" src="../../argos-sdk/libraries/datejs/build/date.js"></script -->
+	<script type="text/javascript">
+		var culture = 'ru-RU';
+		var scr = document.createElement('script');
+		scr.src = '../../argos-sdk/libraries/datejs/build/date-'+culture+'.js';
+		scr.type = 'text/javascript';
+		document.documentElement.appendChild(scr);
+	</script>
 
-Please wait ~5 - 20 seconds for localization to be built.
-
-A 'Finished Generating' message will appear.
-
-Open your XML file in your editor of choice.
-
-
-Adding A Localization:
-
-Identify each string by it's class (namespace) and property
-
-Replace the text of the `value` node with your localized version of that property
-
-Example:
-   
-```
-<data class="Mobile.SalesLogix.Account.Detail" property="accountText">
-   <description>Context for the value string below</description>
-   <value>konte</value> 
-</data>
-```
-
-Save the file
-
-Now that you have your modified XML file (ex: de-DE.xml) you need to generate the localization.js file
-
-Open the Ruby CLI and run the argos-localjs.rb file passing two parameters
-
-	a. First Parameter: Path to your new XML file
-	
-```
-		"C:\code\mobile\products\argos-sample\de-DE.xml"
-```
-
-	b. Second Parameter: Path of desired localization.js file
-	
-```
-		"C:\code\mobile\products\argos-sample\de-DE.js"
-```
-
-Example:
-
-```
-"C:\code\mobile\argos-localizer\argos-localjs.rb" "C:\code\mobile\products\argos-sample\de-DE.xml" "C:\code\mobile\products\argos-sample\de-DE.js"
-```
-
-Please wait ~5 - 20 seconds for the localization js to be built.
-
-A 'Finished Generating' message will appear.
-
-
-
-TODO: Describe where to place file
-
-Place your new .js file into x... do we need to update (from en-US.js to our name?) in index.html ?
