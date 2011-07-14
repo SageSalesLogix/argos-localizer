@@ -35,6 +35,7 @@ Identify each string by it's class (namespace) and property
 Replace the text of the `value` node with your localized version of that property
 
 Example:
+
 ```
 	<data class="Mobile.SalesLogix.Account.Detail" property="accountText">
 
@@ -44,6 +45,7 @@ Example:
 
 	</data>
 ```
+
 Save the file
 
 Now that you have your modified XML file (ex: de-DE.xml) you need to generate the localized javascript file
