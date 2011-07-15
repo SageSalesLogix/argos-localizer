@@ -3,17 +3,19 @@ require 'trollop'
 require 'nokogiri'
 require_relative 'lib/docjs'
 require 'rkelly'
-
 ###
 #
 #	Project folder -> XML Functions
 #
 ###
-def create_localization_worksheet(projectPath, xmlPath, includeSDK)
+def create_localization_worksheet(options)
+	projectPath = options[:project_path]
+	includeSDK = options[:include_sdk]
+	
 	inspector = DocJS::Inspectors::ExtJsInspector.new
 	project = inspector.inspect_path(projectPath)
 
-	if includeSDK then
+	if includeSDK  then
 		sdkPath = projectPath.split('\\')[0..-4].push("argos-sdk").push("src").join("\\");
 		inspector = DocJS::Inspectors::ExtJsInspector.new
 		sdk = inspector.inspect_path(sdkPath)
@@ -21,47 +23,57 @@ def create_localization_worksheet(projectPath, xmlPath, includeSDK)
 		sdk = nil
 	end
 	
-	generate_xml(xmlPath,project,sdk)
+	generate_xml(project, sdk, options)
 	
 end
 
-def generate_xml(destination, project, sdk)
+def generate_xml(project, sdk, options)
+	outfile = options[:xml_path]
+
+	# read config
+	xmlTemplate =  ERB.new(IO.read(options[:xml_template]), 0, "%<>")
+	
 
 	xmlDoc = Nokogiri::XML::Builder.new(:encoding => 'UTF-8') do |xml|
 		xml.localization
 	end
-	rootNode = xmlDoc.doc.xpath('//localization').first
+
+	rootNode = xmlDoc.doc.xpath("//localization").first
+	
+	
+	options["root"] = rootNode
+	options["xml_template"] = xmlTemplate
 	
 	# add from user project
 	project.classes do |className|
-			process_object(className, rootNode)
+		process_object(className, options)
 	end
 	
 	# add from SDK
 	if sdk != nil then
 		sdk.classes do |className|
-			process_object(className, rootNode)
+			process_object(className, options)
 		end
 	end
 	
 	# write results to file
-	open(destination, 'wt', encoding: 'UTF-8') { |outputFile|
-		outputFile << xmlDoc.to_xml
+	open(outfile, 'wt', encoding: 'UTF-8') { |output|
+		output << xmlDoc.to_xml
 	}
 	
-	finished_generating("generating XML worksheet file from your project src folder", destination)
+	finished_generating("generated XML worksheet file from your project src folder", outfile)
 end 
 
-def process_object(object, rootNode)
+def process_object(object, options)
 	object.properties.each do |property|
-		next if !is_localizable_property(property)
-		
-		if "#{property.type}" == "string" then
+		type = is_localizable_type(property, false)
+		next if type==false # skip non-words/formats
+		if property.type == "string" then
 			# values come in as 'val', here we strip the ''
-			cleanValue = "#{property.value}".slice!(1..-1).chop!()
+			cleanValue = property.value.slice!(1..-1).chop!()
 			
-		elsif "#{property.type}" == "object" then
-			process_subobject("#{object.name}","#{property.name}",property.value, rootNode)
+		elsif property.type == "object" then
+			process_subobject(object.name, property, options)
 			next
 			
 		else
@@ -70,12 +82,12 @@ def process_object(object, rootNode)
 			
 		end
 		
-		add_node("#{object.name}","#{property.name}", cleanValue, rootNode)
+		add_node(object.name, property.name, cleanValue, type, options)
 	end
 end
 
-def process_subobject(className, subName, object, rootNode)
-	object.each do |property, value|
+def process_subobject(className, object, options)
+	object.value.each do |property, value|
 		# sometimes the keys were defined with int (valid js, not valid json)
 		if property.is_a?(Integer) then
 			property = property.to_s()
@@ -86,41 +98,42 @@ def process_subobject(className, subName, object, rootNode)
 			cleanValue = value.slice!(1..-1).chop!()
 			
 		# test if further delving is needed
-		elsif value.is_a? Hash then
-			process_subobject(className, subName+"["+property+"]", value)
+		elsif property.is_a? Hash then
+			subobject = {"value"=>property, "name"=>object.name }
+			process_subobject(className, subobject, options)
+			next
 			
 		else
 			#TODO: handle neither string or hash
 			next
 			
 		end
-		
-		add_node(className,subName+"["+property+"]", cleanValue, rootNode)
+		type = is_localizable_type(property,"word")
+		add_node(className, object.name+"["+property+"]", cleanValue, type, options)
 	end
 end
 
-def add_node(className,property,value,rootNode)
-	#<data class=”Mobile.SalesLogix.Account.Detail” property=”acctMgrText”>
-	#   <description></description>
-	#   <value>String to be Translated</value> 
-	#</data>
-	dataNode = Nokogiri::XML::Node.new("data", rootNode.document())
-	dataNode["class"] = className
-	dataNode["property"] = property
-
-	descriptionNode = Nokogiri::XML::Node.new("description", rootNode.document())
-
-	valueNode = Nokogiri::XML::Node.new("value", rootNode.document())
-	valueNode.content = value
-	
-	dataNode.add_child(descriptionNode)
-	dataNode.add_child(valueNode)
-	
-	rootNode.add_child(dataNode)
+def add_node(className, property, value, type, options)
+	rootNode = options["root"]
+	rootNode << options["xml_template"].result(binding)
 end
 
-def is_localizable_property(property)
-	return (property.name =~ /Text|String|Format$/) != nil
+def is_localizable_type(property, default)
+	propertyName = ""
+	
+	if property.is_a?(String) then
+		propertyName = property
+	elsif property.is_a?(Integer) then
+		propertyName = property.to_s()
+	else
+		propertyName = property.name
+	end
+	
+	case true
+		when (propertyName =~ /Format*.+?(Text|String)/i) != nil	then return "format"
+		when (propertyName =~ /Text|String$/i) != nil					then return "text"
+	end
+	return default
 end 
 
 
@@ -130,39 +143,21 @@ end
 #	XML -> JS Functions
 #
 ###
-def create_localization_js(source, destination)
-
-	# start function -- including this for convience, but can be taken out
-	# if you take it out please remove the ending })();
-	localize =	"(function() {\n"
-	localize <<	"\tvar getV = Sage.Platform.Mobile.Utility.getValue,\n"
-	localize <<	"\t\tscope = this,\n"
-	localize <<	"\t\tlocalize = function(name, values) {\n"
-	localize << "\t\t\tvar target = getV(scope, name);\n"
-	localize << "\t\t\tif (target) Ext.override(target, values);\n"
-	localize << "\t\t};\n\n"
-
-	# Template strings
-	localizeFunctionTemplateText = "\tlocalize('<%= className %>',{\n"+
-		"<%= attributeMap %>\n" +
-		"\t});\n\n"
-
+def create_localization_js(options)
+	inputXMLFile = options[:xml_path]
+	outfile = options[:js_path]
 	# map collection is for when we have property : { property : value, property : value }
-	attributeMapCollectionTemplateText = "\t\t<%= property %> : {\n"+
-		"<%= attributeMapCollection %>\n" +
-		"\t\t},"
-		
-	attributeMapItemTemplateText = "\t\t<%= property %> : '<%= value %>',"
-
-	attributeMapCollectionItemTemplateText = "\t\t\t<%= collectionProperty %> : '<%= collectionValue %>',"
-
 	# create the ERB templates
-	localizeFunctionTemplate = ERB.new localizeFunctionTemplateText
-	attributeMapCollectionTemplate = ERB.new attributeMapCollectionTemplateText
-	attributeMapItemTemplate = ERB.new attributeMapItemTemplateText
-	attributeMapCollectionItemTemplate = ERB.new attributeMapCollectionItemTemplateText
+	attributeMapItemTemplate = ERB.new "\t\t<%= property %> : '<%= value %>',"
+	attributeMapCollectionTemplate = ERB.new "\t\t<%= property %> : {\n<%= attributeMapCollection %>\n\t\t},"
+	attributeMapCollectionItemTemplate = ERB.new "\t\t\t<%= collectionProperty %> : '<%= collectionValue %>',"
 
-	@doc = Nokogiri::XML(File.open(source))
+	# container for localized objects that contain
+	# "className" => "mobile.x.y.z"
+	# "attributeMap" => string of all attributes
+	localizations = []
+	
+	@doc = Nokogiri::XML(File.open(inputXMLFile))
 	# get a list of nodes that have a class (should be all)
 	classSet = @doc.xpath("//@class")
 	# remove duplicate class names
@@ -196,7 +191,7 @@ def create_localization_js(source, destination)
 				
 				thisHashes.each do |hashNode|
 					collectionProperty = hashNode["property"].split("[")[1].chop!()
-					collectionValue = fix_quotes(hashNode.at_css("value").inner_text())
+					collectionValue = single_quotes_to_double(hashNode.at_css("value").inner_text())
 					attributeMapCollection.push( attributeMapCollectionItemTemplate.result(binding) )
 				end
 				
@@ -208,31 +203,29 @@ def create_localization_js(source, destination)
 				
 			end
 			
-			value =  fix_quotes(node.at_css("value").inner_text())
+			value =  single_quotes_to_double(node.at_css("value").inner_text())
 			
 			
 			attributeMap.push ( attributeMapItemTemplate.result(binding) )
 		end
 		
 		attributeMap = attributeMap.join("\n").chop!()
-		
-		localize << localizeFunctionTemplate.result(binding)
+		localizations.push( {"className" => className, "attributeMap" => attributeMap  } )
 		
 	end
 	
-	# this is the ending of the anon function from start
-	localize << "})();\n"
+	jsTemplate =  ERB.new(IO.read(options[:js_template]), 0, "%<>")
 	
 	# save
-	open(destination, 'wt') { |f|
-		f << localize
+	open(outfile, 'wt') { |file|
+		file << jsTemplate.result(binding)
 	}
 	
-	finished_generating("generating local .js file from XML", destination)
+	finished_generating("generated local .js file from XML", outfile)
 end
 
-def fix_quotes(val)
-	return val.gsub("'","\"")
+def single_quotes_to_double(value)
+	return value.gsub("'","\"")
 end
 
 
@@ -245,7 +238,7 @@ end
 def finished_generating(action,outfile)
 	puts ""
 	puts "----------------------------"
-	puts "Success! argos-localizer has finished "
+	puts "Success! argos-localizer has"
 	puts action
 	puts "and placed it here, as requested:"
 	puts outfile
@@ -283,7 +276,7 @@ end
 
 def show_help()
 	# show the options help again maybe?
-	puts "try using --help to see the correct list of options"
+	puts "Try using --help to see the correct list of options"
 end
 
 def parse_cli_arguments()
@@ -306,18 +299,19 @@ EOS
 		opt :project_path, "Project src folder path", :type => :string
 		opt :xml_path, "Path of XML file to be generated or used", :type => :string       
 		opt :js_path, "Path of javascript file to be generated", :type => :string 
-		opt :include_sdk, "Toggle to include argos-sdk when generating XML", :default => true
-		opt :js_template, "Relative Path to js template file", :type=> :string, default => "argos-localizer.erb"
+		opt :include_sdk, "true/false to include argos-sdk when generating XML", :default => true
+		opt :xml_template, "Relative Path to xml template file (.erb)", :type=> :string, :default => "xml-template.erb"
+		opt :js_template, "Relative Path to js template file (.erb)", :type=> :string, :default => "js-template.erb"
 	end 
 	return opts
 end
 
 def run(options)
 	if is_create_worksheet(options) then
-		create_localization_worksheet(options[:project_path], options[:xml_path], options[:include_sdk] )
+		create_localization_worksheet(options)
 		
 	elsif is_create_js(options) then
-		create_localization_js(options[:xml_path], options[:js_path])
+		create_localization_js(options)
 		
 	else
 		show_help()
