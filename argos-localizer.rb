@@ -3,6 +3,9 @@ require 'trollop'
 require 'nokogiri'
 require_relative 'lib/docjs'
 require 'rkelly'
+
+
+
 ###
 #
 #	Project folder -> XML Functions
@@ -35,7 +38,7 @@ def generate_xml(project, sdk, options)
 	
 
 	xmlDoc = Nokogiri::XML::Builder.new(:encoding => 'UTF-8') do |xml|
-		xml.localization
+		xml.localization "\n"
 	end
 
 	rootNode = xmlDoc.doc.xpath("//localization").first
@@ -44,13 +47,21 @@ def generate_xml(project, sdk, options)
 	options["root"] = rootNode
 	options["xml_template"] = xmlTemplate
 	
-	# add from user project
+	# add from project
+	project.modules do |moduleName|
+		process_object(moduleName, options)
+	end
+	
 	project.classes do |className|
 		process_object(className, options)
 	end
 	
 	# add from SDK
 	if sdk != nil then
+		sdk.modules do |moduleName|
+			process_object(moduleName, options)
+		end
+		
 		sdk.classes do |className|
 			process_object(className, options)
 		end
@@ -67,10 +78,8 @@ end
 def process_object(object, options)
 	object.properties.each do |property|
 		type = is_localizable_type(property, false)
-		next if type==false # skip non-words/formats
 		if property.type == "string" then
-			# values come in as 'val', here we strip the ''
-			cleanValue = property.value.slice!(1..-1).chop!()
+			cleanValue = remove_bounding_quotes(property.value)
 			
 		elsif property.type == "object" then
 			process_subobject(object.name, property, options)
@@ -79,6 +88,9 @@ def process_object(object, options)
 		else
 			#TODO: handle not string nor object
 			next
+		
+		# note we skip non types -after- it has process sub objects
+		next if type==false # skip non-words/formats
 			
 		end
 		
@@ -94,8 +106,7 @@ def process_subobject(className, object, options)
 		end
 		
 		if value.is_a? String then
-			# values come in as 'val', here we strip the ''
-			cleanValue = value.slice!(1..-1).chop!()
+			cleanValue = remove_bounding_quotes(value)
 			
 		# test if further delving is needed
 		elsif property.is_a? Hash then
@@ -108,7 +119,7 @@ def process_subobject(className, object, options)
 			next
 			
 		end
-		type = is_localizable_type(property,"word")
+		type = is_localizable_type(property,"text")
 		add_node(className, object.name+"["+property+"]", cleanValue, type, options)
 	end
 end
@@ -130,12 +141,21 @@ def is_localizable_type(property, default)
 	end
 	
 	case true
-		when (propertyName =~ /Format*.+?(Text|String)/i) != nil	then return "format"
-		when (propertyName =~ /Text|String$/i) != nil					then return "text"
+		when (propertyName =~ /Format*+?(Text|String)$/i) != nil	then return "format"
+		when (propertyName =~ /(message|Text|String)$/i) != nil	then return "text"
 	end
 	return default
 end 
 
+def remove_bounding_quotes(value)
+	if value.match(/^['"]/)
+		value.slice!(1..-1)
+	end
+	if value.match(/['"]$/)
+		value.chop!()
+	end
+	return value
+end
 
 
 ###
