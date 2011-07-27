@@ -5,7 +5,6 @@ require_relative 'lib/docjs'
 require 'rkelly'
 
 
-
 ###
 #
 #	Project folder -> XML Functions
@@ -88,18 +87,22 @@ def process_object(object, options)
 		else
 			#TODO: handle not string nor object
 			next
+
+		end
 		
 		# note we skip non types -after- it has process sub objects
 		next if type==false # skip non-words/formats
-			
-		end
-		
+
 		add_node(object.name, property.name, cleanValue, type, options)
 	end
 end
 
 def process_subobject(className, object, options)
 	object.value.each do |property, value|
+		type = is_localizable_type(property, false)
+		if type == false
+			type = is_localizable_type(object.name, false)
+		end
 		# sometimes the keys were defined with int (valid js, not valid json)
 		if property.is_a?(Integer) then
 			property = property.to_s()
@@ -109,17 +112,18 @@ def process_subobject(className, object, options)
 			cleanValue = remove_bounding_quotes(value)
 			
 		# test if further delving is needed
-		elsif property.is_a? Hash then
-			subobject = {"value"=>property, "name"=>object.name }
+		elsif property.is_a?(Hash) then
+			subobject = DocJS::Meta::Property.new(object.name,nil,"object",property) 
 			process_subobject(className, subobject, options)
 			next
 			
 		else
 			#TODO: handle neither string or hash
 			next
-			
+		
 		end
-		type = is_localizable_type(property,"text")
+		
+		next if type==false # skip non-words/formats
 		add_node(className, object.name+"["+property+"]", cleanValue, type, options)
 	end
 end
@@ -136,13 +140,17 @@ def is_localizable_type(property, default)
 		propertyName = property
 	elsif property.is_a?(Integer) then
 		propertyName = property.to_s()
+	elsif property.is_a?(Hash) then
+		# we let this fall thru because it needs to recursively call
+		# process on each key in this hash
+		return default
 	else
 		propertyName = property.name
 	end
 	
 	case true
 		when (propertyName =~ /Format*+?(Text|String)$/i) != nil	then return "format"
-		when (propertyName =~ /(message|Text|String)$/i) != nil	then return "text"
+		when (propertyName =~ /message|Text|String$/i) != nil	then return "text"
 	end
 	return default
 end 
