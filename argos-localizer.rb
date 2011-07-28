@@ -12,15 +12,13 @@ require 'rkelly'
 ###
 def create_localization_worksheet(options)
 	projectPath = options[:project_path]
-	includeSDK = options[:include_sdk]
 	
 	inspector = DocJS::Inspectors::ExtJsInspector.new
 	project = inspector.inspect_path(projectPath)
 
-	if includeSDK  then
-		sdkPath = projectPath.split('\\')[0..-4].push("argos-sdk").push("src").join("\\");
+	if options[:include_sdk]  then
 		inspector = DocJS::Inspectors::ExtJsInspector.new
-		sdk = inspector.inspect_path(sdkPath)
+		sdk = inspector.inspect_path(options[:sdk_path])
 	else
 		sdk = nil
 	end
@@ -37,7 +35,7 @@ def generate_xml(project, sdk, options)
 	
 
 	xmlDoc = Nokogiri::XML::Builder.new(:encoding => 'UTF-8') do |xml|
-		xml.localization "\n"
+		xml.localization
 	end
 
 	rootNode = xmlDoc.doc.xpath("//localization").first
@@ -67,8 +65,10 @@ def generate_xml(project, sdk, options)
 	end
 	
 	# write results to file
+	doc = Nokogiri::XML(xmlDoc.to_xml.gsub(/__/,'-')) 
+	xslt = Nokogiri::XSLT(File.read(options[:xslt_template])) 
 	open(outfile, 'wt', encoding: 'UTF-8') { |output|
-		output << xmlDoc.to_xml
+		output << xslt.transform(doc).to_xml 
 	}
 	
 	finished_generating("generated XML worksheet file from your project src folder", outfile)
@@ -123,7 +123,9 @@ def process_subobject(className, object, options)
 		
 		end
 		
-		next if type==false # skip non-words/formats
+		# skip non-words/formats
+		next if type==false 
+		
 		add_node(className, object.name+"["+property+"]", cleanValue, type, options)
 	end
 end
@@ -149,8 +151,8 @@ def is_localizable_type(property, default)
 	end
 	
 	case true
-		when (propertyName =~ /Format*+?(Text|String)$/i) != nil	then return "format"
-		when (propertyName =~ /message|Text|String$/i) != nil	then return "text"
+		when (propertyName =~ /FormatText$/i) != nil	then return "format"
+		when (propertyName =~ /message|Text$/i) != nil	then return "text"
 	end
 	return default
 end 
@@ -327,9 +329,11 @@ EOS
 		opt :project_path, "Project src folder path", :type => :string
 		opt :xml_path, "Path of XML file to be generated or used", :type => :string       
 		opt :js_path, "Path of javascript file to be generated", :type => :string 
+		opt :sdk_path, "Relative Path to argos-sdk src folder", :type=> :string, :default => "../../argos-sdk/src"
 		opt :include_sdk, "true/false to include argos-sdk when generating XML", :default => true
 		opt :xml_template, "Relative Path to xml template file (.erb)", :type=> :string, :default => "xml-template.erb"
 		opt :js_template, "Relative Path to js template file (.erb)", :type=> :string, :default => "js-template.erb"
+		opt :xslt_template, "Relative Path to xml stylesheet template (.xslt)", :type=> :string, :default => "xslt-template.xslt"
 	end 
 	return opts
 end
