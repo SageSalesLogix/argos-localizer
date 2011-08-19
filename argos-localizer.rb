@@ -98,7 +98,7 @@ def process_object(object, options)
 end
 
 def process_subobject(className, object, options)
-	object.value.each do |property, value|
+	object.value.each_with_index do |(property, value), index|
 		type = is_localizable_type(property, false)
 		if type == false
 			type = is_localizable_type(object.name, false)
@@ -113,7 +113,7 @@ def process_subobject(className, object, options)
 			
 		# test if further delving is needed
 		elsif property.is_a?(Hash) then
-			subobject = DocJS::Meta::Property.new(object.name,nil,"object",property) 
+			subobject = DocJS::Meta::Property.new(object.name+"["+index.to_s()+"]",nil,"object",property) 
 			process_subobject(className, subobject, options)
 			next
 			
@@ -178,9 +178,9 @@ def create_localization_js(options)
 	outfile = options[:js_path]
 	# map collection is for when we have property : { property : value, property : value }
 	# create the ERB templates
-	attributeMapItemTemplate = ERB.new "\t\t<%= property %> : '<%= value %>',"
-	attributeMapCollectionTemplate = ERB.new "\t\t<%= property %> : {\n<%= attributeMapCollection %>\n\t\t},"
-	attributeMapCollectionItemTemplate = ERB.new "\t\t\t<%= collectionProperty %> : '<%= collectionValue %>',"
+	attributeMapItemTemplate = ERB.new "        <%= property %> : '<%= value %>',"
+	attributeMapCollectionTemplate = ERB.new "        <%= property %> : {\n<%= attributeMapCollection %>\n\t\t},"
+	attributeMapCollectionItemTemplate = ERB.new "            <%= collectionProperty %> : '<%= collectionValue %>',"
 
 	# container for localized objects that contain
 	# "className" => "mobile.x.y.z"
@@ -218,17 +218,34 @@ def create_localization_js(options)
 				thisHashes = nodes.xpath("//data[@class='"+className+"'][starts-with(@property,'"+property+"')]")
 				
 				attributeMapCollection = []
+				isArrayList = false
 				
 				thisHashes.each do |hashNode|
-					collectionProperty = hashNode["property"].split("[")[1].chop!()
+					splittedPropertyName = hashNode["property"].split("[")
+					collectionProperty = splittedPropertyName[1].chop!()
 					collectionValue = single_quotes_to_double(hashNode.at_css("value").inner_text())
-					attributeMapCollection.push( attributeMapCollectionItemTemplate.result(binding) )
+					
+					# test for arrays
+					if splittedPropertyName.length > 2 then
+						isArrayList = true;
+						property = splittedPropertyName[0]+"["+splittedPropertyName[1]+"]['"+splittedPropertyName[2].chop!()+"']"
+						value = collectionValue
+						attributeMap.push ( attributeMapItemTemplate.result(binding) )
+					else
+						attributeMapCollection.push( attributeMapCollectionItemTemplate.result(binding) )
+					end
+					
 				end
 				
 				# chop is to remove trailing , from last map item
 				attributeMapCollection = attributeMapCollection.join("\n").chop!()
 				
-				attributeMap.push ( attributeMapCollectionTemplate.result(binding) )
+				if isArrayList then
+					next
+				else
+					attributeMap.push ( attributeMapCollectionTemplate.result(binding) )
+				end
+				
 				next
 				
 			end
@@ -329,7 +346,7 @@ EOS
 		opt :project_path, "Project src folder path", :type => :string
 		opt :xml_path, "Path of XML file to be generated or used", :type => :string       
 		opt :js_path, "Path of javascript file to be generated", :type => :string 
-		opt :sdk_path, "Relative Path to argos-sdk src folder", :type=> :string, :default => "../../argos-sdk/src"
+		opt :sdk_path, "Absolute Path to argos-sdk src folder", :type=> :string, :default => "C:\\code\\argos-sdk\\src"
 		opt :include_sdk, "true/false to include argos-sdk when generating XML", :default => true
 		opt :xml_template, "Relative Path to xml template file (.erb)", :type=> :string, :default => "xml-template.erb"
 		opt :js_template, "Relative Path to js template file (.erb)", :type=> :string, :default => "js-template.erb"
