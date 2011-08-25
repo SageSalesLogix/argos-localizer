@@ -346,7 +346,7 @@ EOS
 		opt :project_path, "Project src folder path", :type => :string
 		opt :xml_path, "Path of XML file to be generated or used", :type => :string       
 		opt :js_path, "Path of javascript file to be generated", :type => :string 
-		opt :sdk_path, "Absolute Path to argos-sdk src folder", :type=> :string, :default => "C:\\code\\argos-sdk\\src"
+		opt :sdk_path, "Absolute Path to argos-sdk src folder", :type=> :string, :default => "C:\\code\\mobile\\argos-sdk\\src"
 		opt :include_sdk, "true/false to include argos-sdk when generating XML", :default => true
 		opt :xml_template, "Relative Path to xml template file (.erb)", :type=> :string, :default => "xml-template.erb"
 		opt :js_template, "Relative Path to js template file (.erb)", :type=> :string, :default => "js-template.erb"
