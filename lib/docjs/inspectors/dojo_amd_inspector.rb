@@ -12,18 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-module DocJS
-  module Meta
-    class File
-      attr_accessor :name,
-                    :path,
-                    :modules,
-                    :classes,
-                    :functions
+require 'rkelly'
+require 'find'
+require_relative 'inspector'
+require_relative '../visitors/dojo_amd_inspection_visitor'
 
-      def initialize(name = nil, path = nil)
-        @name = name
-        @path = path
+module DocJS
+  module Inspectors
+    class DojoAmdInspector < Inspector
+      def initialize
+        super(Visitors::DojoAmdInspectionVisitor)
       end
     end
   end

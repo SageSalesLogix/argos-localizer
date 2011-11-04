@@ -1,371 +1,213 @@
+﻿#!/usr/bin/ruby
+#
+# Copyright (c) 2010, Sage Software, Inc. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+$:.unshift './lib' # force use of local rkelly
+
 require 'erb'
+require 'json'
 require 'trollop'
 require 'nokogiri'
+require 'pathname'
 require_relative 'lib/docjs'
-require 'rkelly'
 
+Encoding.default_external = Encoding::UTF_8
 
-###
-#
-#	Project folder -> XML Functions
-#
-###
-def create_localization_worksheet(options)
-	projectPath = options[:project_path]
-	
-	inspector = DocJS::Inspectors::ExtJsInspector.new
-	project = inspector.inspect_path(projectPath)
-
-	if options[:include_sdk]  then
-		inspector = DocJS::Inspectors::ExtJsInspector.new
-		sdk = inspector.inspect_path(options[:sdk_path])
-	else
-		sdk = nil
-	end
-	
-	generate_xml(project, sdk, options)
-	
+class Array
+  def stack(value)
+    self.push(value)
+    yield self if block_given?
+    self.pop
+  end
 end
 
-def generate_xml(project, sdk, options)
-	outfile = options[:xml_path]
+module Argos
+  class Localizer
+    attr_accessor :base_path,
+                  :config
 
-	# read config
-	xmlTemplate =  ERB.new(IO.read(options[:xml_template]), 0, "%<>")
-	
+    def initialize(path, config)
+      @base_path = Pathname.new(path || ".")
+      @config = config
+    end
 
-	xmlDoc = Nokogiri::XML::Builder.new(:encoding => 'UTF-8') do |xml|
-		xml.localization
-	end
+    def run(command)
+      case command
+        when "export" then export
+        when "import" then import
+      end
+    end
 
-	rootNode = xmlDoc.doc.xpath("//localization").first
-	
-	
-	options["root"] = rootNode
-	options["xml_template"] = xmlTemplate
-	
-	# add from project
-	project.modules do |moduleName|
-		process_object(moduleName, options)
-	end
-	
-	project.classes do |className|
-		process_object(className, options)
-	end
-	
-	# add from SDK
-	if sdk != nil then
-		sdk.modules do |moduleName|
-			process_object(moduleName, options)
-		end
-		
-		sdk.classes do |className|
-			process_object(className, options)
-		end
-	end
-	
-	# write results to file
-	doc = Nokogiri::XML(xmlDoc.to_xml.gsub(/__/,'-')) 
-	xslt = Nokogiri::XSLT(File.read(options[:xslt_template])) 
-	open(outfile, 'wt', encoding: 'UTF-8') { |output|
-		output << xslt.transform(doc).to_xml 
-	}
-	
-	finished_generating("generated XML worksheet file from your project src folder", outfile)
-end 
+    def load_source_projects
+      is_interesting_file = lambda {|file| file =~ /\.js$/i}
 
-def process_object(object, options)
-	object.properties.each do |property|
-		type = is_localizable_type(property, false)
-		if property.type == "string" then
-			cleanValue = remove_bounding_quotes(property.value)
-			
-		elsif property.type == "object" then
-			process_subobject(object.name, property, options)
-			next
-			
-		else
-			#TODO: handle not string nor object
-			next
+      projects = {}
 
-		end
-		
-		# note we skip non types -after- it has process sub objects
-		next if type==false # skip non-words/formats
+      @config[:projects].each do |project|
+        inspector = DocJS::Inspectors::DojoAmdInspector.new()
+        projects[project[:alias]] = inspector.inspect_path(@base_path + project[:path], true, &is_interesting_file)
+      end
 
-		add_node(object.name, property.name, cleanValue, type, options)
-	end
+      projects
+    end
+
+    def is_localizable_property(path, name, value)
+      return true if name =~ /FormatText$/i
+      return true if name =~ /(message|Text)$/i
+      false
+    end
+
+    def resolve_localization_type(path, name, value)
+      return "format" if name =~ /FormatText$/i
+      "text"
+    end
+
+    def iterate_properties(path, name, value, &block)
+      if value.is_a?(DocJS::Meta::Class) || value.is_a?(DocJS::Meta::Module)
+        value.properties.each {|property| iterate_properties(path + [property], property.name, property.value, &block)}
+      elsif value.is_a?(Hash)
+        value.each {|k,v| iterate_properties(path + [k], k, v, &block)}
+      elsif value.is_a?(Enumerable)
+        value.each_with_index {|v,i| iterate_properties(path + [i.to_s], i.to_s, v, &block)}
+      else
+        yield(path, name, value) if block_given? && is_localizable_property(path, name, value)
+      end
+    end
+
+    def path_to_property_name(path)
+      extract = lambda {|segment| segment.respond_to?(:name) ? segment.name : segment}
+
+      path.slice(1..-1).reduce(extract.call(path[0])) do |aggregate, segment|
+        "#{aggregate}[%s]" % extract.call(segment)
+      end
+    end
+
+    def export()
+      source_projects = load_source_projects
+      source_classes = source_projects.values.flat_map {|project| project.classes}
+      source_modules = source_projects.values.flat_map {|project| project.modules}
+
+      builder = Nokogiri::XML::Builder.new do |xml|
+        xml.localization {
+          xml.properties {
+            [source_classes, source_modules].flatten.each do |object|
+              iterate_properties([object], nil, object) do |path, name, value|
+                xml.property {
+                  xml.class_ path[0].name
+                  xml.name_ path_to_property_name(path.slice(1..-1))
+                  xml.type_ resolve_localization_type(path, name, value)
+                  xml.value_ value.to_s
+                }
+              end
+            end
+          }
+        }
+      end
+
+      document = builder.doc
+
+      if @config[:export][:transform]
+        xslt = Nokogiri::XSLT(File.read(@config[:export][:transform]))
+        document = xslt.transform(document)
+      end
+
+      File.open(@base_path + @config[:export][:path], 'w', :encoding => 'UTF-8') do |file|
+        file.write(document.to_xml)
+      end
+    end
+
+    def build_localization_object(properties)
+      object = current = {}
+
+      for property in properties
+        path = property[:name].scan(/\w+/)
+        for segment in path[0..-2]
+          current = (current[segment] ||= {})
+        end
+
+        current[path.last] = property[:value]
+      end
+
+      object
+    end
+
+    def import()
+      @config[:import][:map].each do |culture, map|
+        document = Nokogiri::XML(File.read(@base_path + map[:in]))
+
+        if @config[:import][:transform]
+          xslt = Nokogiri::XSLT(File.read(@config[:import][:transform]))
+          document = xslt.transform(document)
+        end
+
+        properties = document.css("localization > properties > property")
+        classes = {}
+        properties.each {|property|
+          current = (classes[property.css("class").text] ||= {})
+          path = property.css("name").text.scan(/\w+/)
+          path[0..-2].each {|segment| current = (current[segment] ||= {})}
+          current[path.last] = property.css("value").text
+        }
+
+        localized = classes
+        template = ERB.new(File.read(@config[:import][:template]), 0, "%<>")
+        result = template.result(binding)
+
+        File.open(@base_path + map[:out], 'w', :encoding => 'UTF-8') do |file|
+          file.write(result)
+        end
+      end
+    end
+  end
 end
 
-def process_subobject(className, object, options)
-	object.value.each_with_index do |(property, value), index|
-		type = is_localizable_type(property, false)
-		if type == false
-			type = is_localizable_type(object.name, false)
-		end
-		# sometimes the keys were defined with int (valid js, not valid json)
-		if property.is_a?(Integer) then
-			property = property.to_s()
-		end
-		
-		if value.is_a? String then
-			cleanValue = remove_bounding_quotes(value)
-			
-		# test if further delving is needed
-		elsif property.is_a?(Hash) then
-			subobject = DocJS::Meta::Property.new(object.name+"["+index.to_s()+"]",nil,"object",property) 
-			process_subobject(className, subobject, options)
-			next
-			
-		else
-			#TODO: handle neither string or hash
-			next
-		
-		end
-		
-		# skip non-words/formats
-		next if type==false 
-		
-		add_node(className, object.name+"["+property+"]", cleanValue, type, options)
-	end
-end
-
-def add_node(className, property, value, type, options)
-	rootNode = options["root"]
-	rootNode << options["xml_template"].result(binding)
-end
-
-def is_localizable_type(property, default)
-	propertyName = ""
-	
-	if property.is_a?(String) then
-		propertyName = property
-	elsif property.is_a?(Integer) then
-		propertyName = property.to_s()
-	elsif property.is_a?(Hash) then
-		# we let this fall thru because it needs to recursively call
-		# process on each key in this hash
-		return default
-	else
-		propertyName = property.name
-	end
-	
-	case true
-		when (propertyName =~ /FormatText$/i) != nil	then return "format"
-		when (propertyName =~ /message|Text$/i) != nil	then return "text"
-	end
-	return default
-end 
-
-def remove_bounding_quotes(value)
-	if value.match(/^['"]/)
-		value.slice!(1..-1)
-	end
-	if value.match(/['"]$/)
-		value.chop!()
-	end
-	return value
-end
-
-
-###
-#
-#	XML -> JS Functions
-#
-###
-def create_localization_js(options)
-	inputXMLFile = options[:xml_path]
-	outfile = options[:js_path]
-	# map collection is for when we have property : { property : value, property : value }
-	# create the ERB templates
-	attributeMapItemTemplate = ERB.new "        <%= property %> : '<%= value %>',"
-	attributeMapCollectionTemplate = ERB.new "        <%= property %> : {\n<%= attributeMapCollection %>\n\t\t},"
-	attributeMapCollectionItemTemplate = ERB.new "            <%= collectionProperty %> : '<%= collectionValue %>',"
-
-	# container for localized objects that contain
-	# "className" => "mobile.x.y.z"
-	# "attributeMap" => string of all attributes
-	localizations = []
-	
-	@doc = Nokogiri::XML(File.open(inputXMLFile))
-	# get a list of nodes that have a class (should be all)
-	classSet = @doc.xpath("//@class")
-	# remove duplicate class names
-	classes = []
-	classSet.each do |className|
-		classes.push(className.content())
-	end
-	classes = classes.uniq
-	
-	classes.each do |className|
-		attributeMap = []
-		hashBlackList = []
-		# get all nodes that are assigned to this class
-		nodes = @doc.xpath("//data[@class='"+className+"']")
-		nodes.each do |node|
-			# check for hash (meaning a property that has a {} for value)
-			property = node["property"]
-			if property.include?("[") then
-				property = property.split("[")[0]
-				
-				# skip if property is on hash black list
-				next if hashBlackList.include?(property)
-				
-				# else we gather them all up...
-				# add this property to the 'we did it already' list
-				hashBlackList.push(property)
-				
-				thisHashes = nodes.xpath("//data[@class='"+className+"'][starts-with(@property,'"+property+"')]")
-				
-				attributeMapCollection = []
-				isArrayList = false
-				
-				thisHashes.each do |hashNode|
-					splittedPropertyName = hashNode["property"].split("[")
-					collectionProperty = splittedPropertyName[1].chop!()
-					collectionValue = single_quotes_to_double(hashNode.at_css("value").inner_text())
-					
-					# test for arrays
-					if splittedPropertyName.length > 2 then
-						isArrayList = true;
-						property = splittedPropertyName[0]+"["+splittedPropertyName[1]+"]['"+splittedPropertyName[2].chop!()+"']"
-						value = collectionValue
-						attributeMap.push ( attributeMapItemTemplate.result(binding) )
-					else
-						attributeMapCollection.push( attributeMapCollectionItemTemplate.result(binding) )
-					end
-					
-				end
-				
-				# chop is to remove trailing , from last map item
-				attributeMapCollection = attributeMapCollection.join("\n").chop!()
-				
-				if isArrayList then
-					next
-				else
-					attributeMap.push ( attributeMapCollectionTemplate.result(binding) )
-				end
-				
-				next
-				
-			end
-			
-			value =  single_quotes_to_double(node.at_css("value").inner_text())
-			
-			
-			attributeMap.push ( attributeMapItemTemplate.result(binding) )
-		end
-		
-		attributeMap = attributeMap.join("\n").chop!()
-		localizations.push( {"className" => className, "attributeMap" => attributeMap  } )
-		
-	end
-	
-	jsTemplate =  ERB.new(IO.read(options[:js_template]), 0, "%<>")
-	
-	# save
-	open(outfile, 'wt') { |file|
-		file << jsTemplate.result(binding)
-	}
-	
-	finished_generating("generated local .js file from XML", outfile)
-end
-
-def single_quotes_to_double(value)
-	return value.gsub("'","\"")
-end
-
-
-
-###
-#
-#	CLI Utiliies
-#
-###
-def finished_generating(action,outfile)
-	puts ""
-	puts "----------------------------"
-	puts "Success! argos-localizer has"
-	puts action
-	puts "and placed it here, as requested:"
-	puts outfile
-end
-
-def is_create_worksheet(options)
-	
-	if options[:project_path] == nil || options[:xml_path] == nil then
-		return false
-	end
-	
-	if (options[:xml_path] =~ /\.xml$/) == nil then
-		return false
-	end
-
-	return true
-end
-
-def is_create_js(options)
-
-	if options[:xml_path] == nil || options[:js_path] == nil then
-		return false
-	end
-	
-	if (options[:xml_path] =~ /\.xml$/) == nil then
-		return false
-	end
-
-	if (options[:js_path] =~ /\.js$/) == nil then
-		return false
-	end
-
-	return true
-end
-
-def show_help()
-	# show the options help again maybe?
-	puts "Try using --help to see the correct list of options"
-end
-
-def parse_cli_arguments()
-	opts = Trollop::options do
-	version "argos-localizer (C) 2011 Sage"
-	  banner <<-EOS
-	  
-Localizer is a 2 step utility:
-  1) Generates an XML file that contains the localization strings; and
-  
-  2) Generates a localization .js file from the XML file
+def process_command_line
+  global = Trollop::options do
+    banner <<-EOS
+Argos Localizer assists in the localization of Argos SDK based applications
+by analyzing the source code in order to export localizable strings in an
+XML format as well as importing localized strings from an XML format and
+building up localization modules from that data.
 
 Usage:
-	   argos-localizer.rb [options]
-	   
-where [options] are:
+        ruby argos-build-helper.rb (import|export) [options]
 
+Options:
 EOS
 
-		opt :project_path, "Project src folder path", :type => :string
-		opt :xml_path, "Path of XML file to be generated or used", :type => :string       
-		opt :js_path, "Path of javascript file to be generated", :type => :string 
-		opt :sdk_path, "Absolute Path to argos-sdk src folder", :type=> :string, :default => "C:\\code\\mobile\\argos-sdk\\src"
-		opt :include_sdk, "true/false to include argos-sdk when generating XML", :default => true
-		opt :xml_template, "Relative Path to xml template file (.erb)", :type=> :string, :default => "xml-template.erb"
-		opt :js_template, "Relative Path to js template file (.erb)", :type=> :string, :default => "js-template.erb"
-		opt :xslt_template, "Relative Path to xml stylesheet template (.xslt)", :type=> :string, :default => "xslt-template.xslt"
-	end 
-	return opts
+    stop_on ["export", "import"]
+  end
+
+  command = ARGV.shift
+  options = Trollop::options do
+    opt :config_path, "configuration file path", :type => :string, :short => "c", :required => true
+    opt :base_path, "base path for all paths specified in the configuration file", :type => :string, :short => "p", :required => true
+  end
+
+  Trollop::die :config_path, "must exist" unless File.exist?(options[:config_path])
+  Trollop::die :base_path, "must exist" unless File.exist?(options[:base_path])
+
+  [command, options]
 end
 
-def run(options)
-	if is_create_worksheet(options) then
-		create_localization_worksheet(options)
-		
-	elsif is_create_js(options) then
-		create_localization_js(options)
-		
-	else
-		show_help()
-		
-	end
+def main
+  command, options = process_command_line
+  config = JSON.parse(File.read(options[:config_path]), :symbolize_names => true)
+  localizer = Argos::Localizer.new(options[:base_path], config)
+  localizer.run(command)
 end
 
-run(parse_cli_arguments())
+main
+
