@@ -98,19 +98,30 @@ module Argos
       source_projects = load_source_projects
       source_classes = source_projects.values.flat_map {|project| project.classes}
       source_modules = source_projects.values.flat_map {|project| project.modules}
+      properties_by_type = {}
+      [source_classes, source_modules].flatten.each do |object|
+        iterate_properties([object], nil, object) do |path, name, value|
+          type = resolve_localization_type(path, name, value)
+          container = properties_by_type[type.to_sym] || (properties_by_type[type.to_sym] = [])
+          container << {
+            :class => path[0].name,
+            :name => path_to_property_name(path.slice(1..-1)),
+            :type => type,
+            :value => value.to_s
+          }
+        end
+      end
 
       builder = Nokogiri::XML::Builder.new do |xml|
         xml.localization {
           xml.properties {
-            [source_classes, source_modules].flatten.each do |object|
-              iterate_properties([object], nil, object) do |path, name, value|
-                xml.property {
-                  xml.class_ path[0].name
-                  xml.name_ path_to_property_name(path.slice(1..-1))
-                  xml.type_ resolve_localization_type(path, name, value)
-                  xml.value_ value.to_s
-                }
-              end
+            properties_by_type.values.flatten.each do |object|
+              xml.property {
+                xml.class_ object[:class]
+                xml.name_ object[:name]
+                xml.type_ object[:type]
+                xml.value_ object[:value]
+              }
             end
           }
         }
@@ -125,6 +136,40 @@ module Argos
 
       File.open(@base_path + @config[:export][:path], 'w', :encoding => 'UTF-8') do |file|
         file.write(document.to_xml)
+      end
+
+      if @config[:export][:split]
+        properties_by_type.keys.each do |key|
+          builder = Nokogiri::XML::Builder.new do |xml|
+            xml.localization {
+              xml.properties {
+                properties_by_type[key].each do |object|
+                  xml.property {
+                    xml.class_ object[:class]
+                    xml.name_ object[:name]
+                    xml.type_ object[:type]
+                    xml.value_ object[:value]
+                  }
+                end
+              }
+            }
+          end
+
+          document = builder.doc
+
+          if @config[:export][:transform]
+            xslt = Nokogiri::XSLT(File.read(@config[:export][:transform]))
+            document = xslt.transform(document)
+          end
+
+          path = @base_path + @config[:export][:path]
+          ext = path.extname
+          path = path.dirname + (path.basename(ext).to_s + "-#{key.to_s}" + ext)
+
+          File.open(path, 'w', :encoding => 'UTF-8') do |file|
+            file.write(document.to_xml)
+          end
+        end
       end
     end
 

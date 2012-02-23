@@ -1,7 +1,8 @@
 {
     "export": {
         "transform": "transforms/argos-saleslogix-export.xslt",
-        "path": "localization/argos-saleslogix/slx-mobile-strings-beta1.xml"
+        "path": "localization/argos-saleslogix/slx-mobile-strings-beta1.xml",
+        "split": true
     },
     "import": {
         "transform": "transforms/argos-saleslogix-import.xslt",
