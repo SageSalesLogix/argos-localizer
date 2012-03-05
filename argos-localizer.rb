@@ -56,7 +56,7 @@ module Argos
       projects = {}
 
       @config[:projects].each do |project|
-        inspector = DocJS::Inspectors::DojoAmdInspector.new()
+        inspector = @config[:export][:legacy] ? DocJS::Inspectors::ExtJsInspector.new() : DocJS::Inspectors::DojoAmdInspector.new()
         projects[project[:alias]] = inspector.inspect_path(@base_path + project[:path], true, &is_interesting_file)
       end
 
