@@ -23,6 +23,10 @@
             "ru": {
                 "in": "localization/argos-saleslogix/slx-mobile-strings-beta1.ru.xml",
                 "out": "localization/argos-saleslogix/ru.js"
+            },
+            "en-GB": {
+                "in": "localization/argos-saleslogix/slx-mobile-strings-beta1-format.en-GB.xml",
+                "out": "localization/argos-saleslogix/en-GB.js"
             }
         }
     },
