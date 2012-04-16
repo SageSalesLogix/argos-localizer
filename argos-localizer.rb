@@ -21,9 +21,8 @@ require 'json'
 require 'trollop'
 require 'nokogiri'
 require 'pathname'
+require 'fileutils'
 require_relative 'lib/docjs'
-
-Encoding.default_external = Encoding::UTF_8
 
 class Array
   def stack(value)
@@ -51,7 +50,9 @@ module Argos
     end
 
     def load_source_projects
-      is_interesting_file = lambda {|file| file =~ /\.js$/i}
+      is_interesting_file = lambda {|file|
+        (file =~ /\.js$/i) && !(file =~ /[\\\/]nls[\\\/]/i)
+      }
 
       projects = {}
 
@@ -64,25 +65,34 @@ module Argos
     end
 
     def is_localizable_property(path, name, value)
-      return true if name =~ /FormatText$/i
-      return true if name =~ /(message|Text)$/i
+      return true if name =~ /FormatText$/
+      return true if name =~ /Text$/
+      return true if name && name.casecmp("message") == 0
       false
     end
 
     def resolve_localization_type(path, name, value)
-      return "format" if name =~ /FormatText$/i
+      return "format" if name =~ /FormatText(\.|$)/i
       "text"
     end
 
-    def iterate_properties(path, name, value, &block)
+    def iterate_properties(path, name, value, included, &block)
+      included = included || is_localizable_property(path, name, value)
+
       if value.is_a?(DocJS::Meta::Class) || value.is_a?(DocJS::Meta::Module)
-        value.properties.each {|property| iterate_properties(path + [property], property.name, property.value, &block)}
+        value.properties.each {|property|
+          iterate_properties(path + [property], property.name, property.value, included, &block)
+        }
       elsif value.is_a?(Hash)
-        value.each {|k,v| iterate_properties(path + [k], k, v, &block)}
+        value.each {|k,v|
+          iterate_properties(path + [k], k, v, included, &block)
+        }
       elsif value.is_a?(Enumerable)
-        value.each_with_index {|v,i| iterate_properties(path + [i.to_s], i.to_s, v, &block)}
+        value.each_with_index {|v,i|
+          iterate_properties(path + [i.to_s], i.to_s, v, included, &block)
+        }
       else
-        yield(path, name, value) if block_given? && is_localizable_property(path, name, value)
+        yield(path, name, value) if block_given? && included
       end
     end
 
@@ -100,7 +110,7 @@ module Argos
       source_modules = source_projects.values.flat_map {|project| project.modules}
       properties_by_type = {}
       [source_classes, source_modules].flatten.each do |object|
-        iterate_properties([object], nil, object) do |path, name, value|
+        iterate_properties([object], nil, object, false) do |path, name, value|
           type = resolve_localization_type(path, name, value)
           container = properties_by_type[type.to_sym] || (properties_by_type[type.to_sym] = [])
           container << {
@@ -134,7 +144,7 @@ module Argos
         document = xslt.transform(document)
       end
 
-      File.open(@base_path + @config[:export][:path], 'w', :encoding => 'UTF-8') do |file|
+      File.open(@base_path + @config[:export][:path], 'w:UTF-8') do |file|
         file.write(document.to_xml)
       end
 
@@ -166,7 +176,7 @@ module Argos
           ext = path.extname
           path = path.dirname + (path.basename(ext).to_s + "-#{key.to_s}" + ext)
 
-          File.open(path, 'w', :encoding => 'UTF-8') do |file|
+          File.open(path, 'w:UTF-8') do |file|
             file.write(document.to_xml)
           end
         end
@@ -206,12 +216,28 @@ module Argos
           current[path.last] = property.css("value").text
         }
 
-        localized = classes
-        template = ERB.new(File.read(@config[:import][:template]), 0, "%<>")
-        result = template.result(binding)
+        if @config[:import][:split]
+          template = ERB.new(File.read(@config[:import][:template]), 0, "%<>")
+          classes.each do |name, localized|
+            result = template.result(binding)
 
-        File.open(@base_path + map[:out], 'w', :encoding => 'UTF-8') do |file|
-          file.write(result)
+            segments = name.split(".")
+            directory_path = @base_path + map[:out] + (segments[0..-2].join("/"))
+            file_path = directory_path + (segments[-1] + ".js")
+
+            FileUtils.mkdir_p directory_path
+            File.open(file_path, 'w:UTF-8') do |file|
+              file.write(result)
+            end
+          end
+        else
+          localized = classes
+          template = ERB.new(File.read(@config[:import][:template]), 0, "%<>")
+          result = template.result(binding)
+
+          File.open(@base_path + map[:out], 'w:UTF-8') do |file|
+            file.write(result)
+          end
         end
       end
     end

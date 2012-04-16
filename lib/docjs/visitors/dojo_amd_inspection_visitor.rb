@@ -89,17 +89,14 @@ module DocJS
         result
       end
 
-      def visit_DotAccessorNode(node)
+      def visit_ResolveNode(node)
         if is_class_declaration?(node)
           @classes << create_class_from_node(node)
         end
-        super
       end
 
       def is_class_declaration?(node)
-        return false unless node.accessor == 'declare'
-        return false unless node.value.is_a? RKelly::Nodes::ResolveNode
-        return false unless node.value.value == 'dojo'
+        return false unless node.value == 'declare'
         return false unless node.parent.is_a? RKelly::Nodes::FunctionCallNode
         return false unless node.parent.arguments.value.length == 3
         return false unless node.parent.arguments.value.first.is_a? RKelly::Nodes::StringNode
