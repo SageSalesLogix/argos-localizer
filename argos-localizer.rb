@@ -211,7 +211,7 @@ module Argos
         classes = {}
         properties.each {|property|
           current = (classes[property.css("class").text] ||= {})
-          path = property.css("name").text.scan(/\w+/)
+          path = property.css("name").text.scan(/[^\[\]]+/)
           path[0..-2].each {|segment| current = (current[segment] ||= {})}
           current[path.last] = property.css("value").text
         }
