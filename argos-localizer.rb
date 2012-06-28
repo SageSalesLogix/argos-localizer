@@ -200,7 +200,17 @@ module Argos
 
     def import()
       @config[:import][:map].each do |culture, map|
-        document = Nokogiri::XML(File.read(@base_path + map[:in]))
+        if !map[:in].kind_of?(Array)
+            map[:in] = [map[:in]]
+        end
+        
+        document = Nokogiri::XML("<localization/>")
+
+        map[:in].each {|fileName|
+            imported = Nokogiri::XML(File.read(@base_path + fileName))
+            items = imported.css("localization > data")
+            document.root.add_child(items).first
+        }
 
         if @config[:import][:transform]
           xslt = Nokogiri::XSLT(File.read(@config[:import][:transform]))
