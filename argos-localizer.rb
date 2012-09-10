@@ -263,7 +263,7 @@ XML format as well as importing localized strings from an XML format and
 building up localization modules from that data.
 
 Usage:
-        ruby argos-build-helper.rb (import|export) [options]
+        ruby argos-localizer.rb (import|export) [options]
 
 Options:
 EOS
