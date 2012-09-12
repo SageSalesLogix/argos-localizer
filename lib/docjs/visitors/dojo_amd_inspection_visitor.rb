@@ -93,6 +93,9 @@ module DocJS
         if is_class_declaration?(node)
           @classes << create_class_from_node(node)
         end
+        if is_class_set?(node)
+          @classes << create_class_from_node(node.parent.parent.value)
+        end
       end
 
       def is_class_declaration?(node)
@@ -100,6 +103,11 @@ module DocJS
         return false unless node.parent.is_a? RKelly::Nodes::FunctionCallNode
         return false unless node.parent.arguments.value.length == 3
         return false unless node.parent.arguments.value.first.is_a? RKelly::Nodes::StringNode
+        true
+      end
+
+      def is_class_set?(node)
+        return false unless node.value == "lang" && node.parent && node.parent.accessor == "setObject"
         true
       end
 
@@ -114,6 +122,13 @@ module DocJS
             name_node = declare_call.arguments.value[0]
             inherited_node = declare_call.arguments.value[1]
             properties_node = declare_call.arguments.value[2]
+          when 2 then
+            name_node = declare_call.arguments.value[0]
+            if is_mixin?(declare_call.arguments.value)
+              properties_node = declare_call.arguments.value[1].arguments.value[2]
+            else
+              properties_node = declare_call.arguments.value[1]
+            end
           else
             raise 'Could not understand type declaration.'
         end
@@ -142,6 +157,14 @@ module DocJS
         end
 
         result
+      end
+
+      def is_mixin?(args)
+        mixin = args[1]
+
+        return false unless mixin.value.respond_to?("accessor") && mixin.value.accessor == 'mixin'
+
+        true
       end
     end
   end

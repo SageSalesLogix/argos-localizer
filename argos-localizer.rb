@@ -83,7 +83,7 @@ module Argos
         value.properties.each {|property|
           iterate_properties(path + [property], property.name, property.value, included, &block)
         }
-      elsif value.is_a?(Hash)
+      elsif value.is_a?(Hash) && name != "attributeMap"
         value.each {|k,v|
           iterate_properties(path + [k], k, v, included, &block)
         }
