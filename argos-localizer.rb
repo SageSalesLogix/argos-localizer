@@ -1,4 +1,5 @@
 ﻿#!/usr/bin/ruby
+# encoding: utf-8
 #
 # Copyright (c) 2010, Sage Software, Inc. All rights reserved.
 #
