@@ -1,4 +1,4 @@
-﻿#!/usr/bin/ruby
+#!/usr/bin/ruby
 # encoding: utf-8
 #
 # Copyright (c) 2010, Sage Software, Inc. All rights reserved.
@@ -208,13 +208,13 @@ module Argos
         document = Nokogiri::XML("<localization/>")
 
         map[:in].each {|fileName|
-            imported = Nokogiri::XML(File.read(@base_path + fileName))
+            imported = Nokogiri::XML(File.open(@base_path + fileName, 'r:utf-8') { |f| f.read })
             items = imported.css("localization > data")
             document.root.add_child(items).first
         }
 
         if @config[:import][:transform]
-          xslt = Nokogiri::XSLT(File.read(@config[:import][:transform]))
+          xslt = Nokogiri::XSLT(File.open(@config[:import][:transform], 'r:utf-8') { |f| f.read })
           document = xslt.transform(document)
         end
 
@@ -228,7 +228,7 @@ module Argos
         }
 
         if @config[:import][:split]
-          template = ERB.new(File.read(@config[:import][:template]), 0, "%<>")
+          template = ERB.new(File.open(@config[:import][:template], 'r:utf-8') { |f| f.read }, 0, "%<>")
           classes.each do |name, localized|
             result = template.result(binding)
 
@@ -243,7 +243,7 @@ module Argos
           end
         else
           localized = classes
-          template = ERB.new(File.read(@config[:import][:template]), 0, "%<>")
+          template = ERB.new(File.open(@config[:import][:template], 'r:utf-8') { |f| f.read }, 0, "%<>")
           result = template.result(binding)
 
           File.open(@base_path + map[:out], 'w:UTF-8') do |file|
@@ -292,4 +292,3 @@ def main
 end
 
 main
-
