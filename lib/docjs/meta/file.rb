@@ -25,6 +25,10 @@ module DocJS
         @name = name
         @path = path
       end
+      
+      def to_s
+        "Name: #{@name};\nPath: #{@path}"
+      end
     end
   end
 end
