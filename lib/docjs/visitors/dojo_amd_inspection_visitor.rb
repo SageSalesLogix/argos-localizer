@@ -143,7 +143,7 @@ module DocJS
           end
         end
 
-        if properties_node.value.is_a? RKelly::Nodes::PropertyNode
+        if properties_node.value.is_a? Array
           properties_node.value.each do |property|
             name = property.name
             type = get_type_for_node(property.value)
